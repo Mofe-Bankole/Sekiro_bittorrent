@@ -1,8 +1,4 @@
-use std::{
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
-
+use crate::protocol::message;
 #[derive(Debug, Clone)]
 pub struct Peer {
     pub id: Option<u64>,
@@ -11,9 +7,6 @@ pub struct Peer {
     pub am_choking: bool,
     pub am_intrested: bool,
     pub peer_intrested: bool,
-    pub pieces: bitfield::BitField,
-    pub tx: flume::Sender<Vec<u8>>,
-    pub rx: flume::Receiver<Vec<u8>>,
 }
 
 pub enum PeerState {
@@ -21,18 +14,8 @@ pub enum PeerState {
     Disconnected,
 }
 
-pub enum PeerMessga {
-    Intrested,
-    Unintrested,
-    HandShake,
-    KeepAlive,
-    UnableToAccept,
-}
-
-#[tokio::main]
 impl Peer {
     pub async fn new(id: Option<u64>, name: Option<String>, address: std::net::SocketAddr) -> Self {
-        let (tx, rx) = flume::unbounded(5000);
         Self {
             id,
             name,
@@ -40,9 +23,6 @@ impl Peer {
             am_choking: true,
             am_intrested: false,
             peer_intrested: false,
-            pieces: bitfield::BitField::new(0),
-            tx,
-            rx,
         }
     }
 }

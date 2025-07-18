@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 bendy = "0.3.3"
+bitfield = "0.19.1"
+bytes = "1.10.1"
 chrono = "0.4.41"
 flume = "0.11.1"
 slint = "1.12.1"
