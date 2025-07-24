@@ -1,4 +1,5 @@
-use crate::protocol::message;
+use crate::protocol::message::PeerMessage;
+
 #[derive(Debug, Clone)]
 pub struct Peer {
     pub id: Option<u64>,
@@ -7,11 +8,7 @@ pub struct Peer {
     pub am_choking: bool,
     pub am_intrested: bool,
     pub peer_intrested: bool,
-}
-
-pub enum PeerState {
-    Connected,
-    Disconnected,
+    pub message: PeerMessage,
 }
 
 impl Peer {

@@ -1,3 +1,6 @@
+use std::io::Error;
+
+#[derive(Debug)]
 pub enum PeerMessage {
     Connected,
     Intrested,
@@ -25,7 +28,7 @@ impl PeerMessage {
             7 => Ok(PeerMessage::Cancel),
             8 => Ok(PeerMessage::Port),
             9 => Ok(PeerMessage::KeepAlive),
-            _ => Err(Error::UnknownMessage),
+            _ => Err(PeerMessage::Unknown),
         }
     }
 }
