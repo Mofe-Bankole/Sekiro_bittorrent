@@ -28,7 +28,7 @@ impl PeerMessage {
             7 => Ok(PeerMessage::Cancel),
             8 => Ok(PeerMessage::Port),
             9 => Ok(PeerMessage::KeepAlive),
-            _ => Err(PeerMessage::Unknown),
+            // TODO : Create default Match
         }
     }
 }

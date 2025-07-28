@@ -1,3 +1,4 @@
+use crate::protocol::bencode as Bencoder;
 use std::io::Error;
 use torrex::bencode::Torrent;
 
@@ -6,7 +7,5 @@ pub trait TorrentParser {
 }
 
 impl TorrentParser for Torrent {
-    async fn from_bytes(bytes: &[u8]) {
-        let info_bytes = crate::protocol::bencode::decode(bytes);
-    }
+    fn fr
 }
