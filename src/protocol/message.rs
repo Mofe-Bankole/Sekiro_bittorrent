@@ -1,6 +1,6 @@
 use std::io::Error;
 
-#[derive(Debug)]
+#[derive(Debug , Clone , Copy)]
 pub enum PeerMessage {
     Connected,
     Intrested,

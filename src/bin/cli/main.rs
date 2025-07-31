@@ -9,7 +9,7 @@ struct Args {
 }
 
 async fn main() -> Result<(), Box<dyn Error>> {
-    tokio::spawn(async {}).await?;
+    tokio::spawn(async move {}).await?;
 
     fn run() {
         println!("Hello, world!");

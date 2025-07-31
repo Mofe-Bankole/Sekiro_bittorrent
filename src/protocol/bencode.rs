@@ -25,7 +25,7 @@ impl BencodeValue {
             b'd' => Self::decode_dictionary(&mut reader),
             b'0'..=b'9' => Self::decode_bytes(&mut reader),
             other => Err(anyhow!("Unexpected byte: {}", other)),
-        }
+        };
 
 
         Ok(())
@@ -114,8 +114,8 @@ impl BencodeValue {
     }
 
     fn decode_bytes(reader :&mut Bytes) -> Result<BencodeValue , Error>{
-        reader.advance(1)
-        let length_bytes = Vec::from(reader);
+        reader.advance(1);
+        let length_bytes = Vec::new();
 
         while reader.has_remaining() && !reader.chunk().is_empty(){
             let byte = reader.chunk()[0];
@@ -131,8 +131,8 @@ impl BencodeValue {
             reader.advance(1);
         }
 
-        if !reader,has_remaining() || reader.chunk()[0] != b':' {
-            return Err(anyhow!("Expected "))
+        if !reader.has_remaining() || reader.chunk()[0] != b':' {
+            return Err(anyhow!("Expected Values not Found"))
         }
         reader.advance(1);
 

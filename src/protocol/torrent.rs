@@ -1,5 +1,5 @@
 use crate::protocol::bencode as Bencoder;
-use std::io::Error;
+use std::io::{Error , Result};
 use torrex::bencode::Torrent;
 
 pub trait TorrentParser {
@@ -7,5 +7,7 @@ pub trait TorrentParser {
 }
 
 impl TorrentParser for Torrent {
-    fn fr
+    fn from_bytes(bytes : &[u8]) -> Result<()>{
+
+    }
 }

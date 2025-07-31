@@ -8,4 +8,4 @@ pub struct TorrentSessionManger{
 
 pub struct ErrorManager{
 
-}
+}   
