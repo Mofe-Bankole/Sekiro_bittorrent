@@ -14,4 +14,5 @@ color-eyre = "0.6.5"
 flume = "0.11.1"
 ratatui = { version = "0.29.0", features = ["all-widgets"] }
 tokio = "1.46.1"
+torrex = "0.2.1"
 url = "2.5.4"

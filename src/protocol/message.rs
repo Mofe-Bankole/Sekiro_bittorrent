@@ -1,34 +1,16 @@
-use std::io::Error;
-
-#[derive(Debug , Clone , Copy)]
+#[derive(Debug, Clone)]
 pub enum PeerMessage {
-    Connected,
-    Intrested,
-    Unintrested,
-    HandShake,
-    Bitfield,
-    Request,
-    Piece,
-    Cancel,
-    Port,
+    Choke,
+    Unchoke,
+    Interested,
+    NotInterested,
+    Have(u32),
+    Bitfield(Vec<u8>),
+    Request(u32, u32, u32), 
+    Piece(u32, u32, Vec<u8>), 
+    Cancel(u32, u32, u32), 
+    Port(u16),
     KeepAlive,
-    Unknown,
+    Handshake([u8; 68]),
 }
 
-impl PeerMessage {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        match bytes[0] {
-            0 => Ok(PeerMessage::Connected),
-            1 => Ok(PeerMessage::Intrested),
-            2 => Ok(PeerMessage::Unintrested),
-            3 => Ok(PeerMessage::HandShake),
-            4 => Ok(PeerMessage::Bitfield),
-            5 => Ok(PeerMessage::Request),
-            6 => Ok(PeerMessage::Piece),
-            7 => Ok(PeerMessage::Cancel),
-            8 => Ok(PeerMessage::Port),
-            9 => Ok(PeerMessage::KeepAlive),
-            // TODO : Create default Match
-        }
-    }
-}
