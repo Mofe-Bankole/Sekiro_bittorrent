@@ -834,6 +834,7 @@ dependencies = [
  "color-eyre",
  "flume",
  "ratatui",
+ "sha1",
  "tokio",
  "torrex",
  "url",

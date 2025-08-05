@@ -12,23 +12,12 @@ pub enum BencodeValue {
 }
 
 impl BencodeValue {
-    pub fn decode_from_reader(reader: &mut Bytes) -> Result<BencodeValue, Error> {
-        if !reader.has_remaining() {
-            return Err(anyhow!("No data remaining to decode"));
-        }
-
-        match reader.chunk()[0] {
-            b'l' => Self::decode_list(reader),
-            b'i' => Self::decode_integer(reader),
-            b'd' => Self::decode_dictionary(reader),
-            b'0'..=b'9' => Self::decode_bytes(reader),
-            other => Err(anyhow!("Unexpected byte: {}", other)),
-        }
-    }
-
-    pub fn decode(data: &[u8]) -> Result<BencodeValue, Error> {
-        let mut reader = Bytes::from(data.to_vec());
-        let value = Self::decode_from_reader(&mut reader)?;
+    // This Fn calls all other Fns
+    // This Fn call the decode_from_reader function which in turn contains a match statement
+    // The Match Statement auto-selects what to decode
+    pub fn decode(bytes: &[u8]) -> Result<BencodeValue, Error> {
+        let mut reader: Bytes = Bytes::from(bytes.to_vec());
+        let value: BencodeValue = Self::decode_from_reader(&mut reader)?;
 
         if reader.has_remaining() {
             return Err(anyhow::anyhow!(
@@ -39,8 +28,22 @@ impl BencodeValue {
         Ok(value)
     }
 
+    pub fn decode_from_reader(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+        if !reader.has_remaining() {
+            return Err(anyhow!("No Data Remaining To Decode"));
+        }
+
+        match reader.chunk()[0] {
+            b'l' => Self::decode_list(reader),
+            b'i' => Self::decode_integer(reader),
+            b'd' => Self::decode_dictionary(reader),
+            b'0'..=b'9' => Self::decode_bytes(reader),
+            other => Err(anyhow!("Value cannot be decoded {}", other)),
+        }
+    }
+
     // Decoding Functionality for Lists
-    fn decode_list(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    pub fn decode_list(reader: &mut Bytes) -> Result<BencodeValue, Error> {
         reader.advance(1);
         let mut list = Vec::new();
 
@@ -51,12 +54,12 @@ impl BencodeValue {
         if !reader.has_remaining() || reader.chunk()[0] != b'e' {
             return Err(anyhow!("List not terminated by 'e'"));
         }
-        reader.advance(1); 
+        reader.advance(1);
         Ok(BencodeValue::List(list))
     }
 
     // Decoding Functionality for Integers
-    fn decode_integer(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    pub fn decode_integer(reader: &mut Bytes) -> Result<BencodeValue, Error> {
         reader.advance(1);
         let mut number_bytes = Vec::new();
 
@@ -76,7 +79,8 @@ impl BencodeValue {
         }
         reader.advance(1);
 
-        let number_str = String::from_utf8(number_bytes).map_err(|_| anyhow!("Invalid UTF-8 in integer"))?;
+        let number_str =
+            String::from_utf8(number_bytes).map_err(|_| anyhow!("Invalid UTF-8 in integer"))?;
 
         let number = number_str
             .parse::<i64>()
@@ -86,7 +90,7 @@ impl BencodeValue {
     }
 
     // Decoding Functionality for Dictionaries
-    fn decode_dictionary(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    pub fn decode_dictionary(reader: &mut Bytes) -> Result<BencodeValue, Error> {
         reader.advance(1);
         let mut dictionary = Vec::new();
 
@@ -106,7 +110,7 @@ impl BencodeValue {
         Ok(BencodeValue::Dictionary(dictionary))
     }
 
-    fn decode_bytes(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    pub fn decode_bytes(reader: &mut Bytes) -> Result<BencodeValue, Error> {
         let mut length_bytes = Vec::new();
 
         while reader.has_remaining() && !reader.chunk().is_empty() {

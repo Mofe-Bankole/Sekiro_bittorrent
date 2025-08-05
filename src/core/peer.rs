@@ -11,7 +11,6 @@ pub struct Peer {
     pub am_interested: bool,
     pub peer_interested: bool,
     pub has_handshaked: bool,
-    pub bitfield: Option<bitvec::vec::BitVec>,
     pub last_received: Option<PeerMessage>,
     pub last_sent: Option<PeerMessage>,
 }
