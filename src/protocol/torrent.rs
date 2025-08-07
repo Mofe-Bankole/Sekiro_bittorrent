@@ -7,6 +7,7 @@ pub trait TorrentParser {
     fn extract_announce(bytes: &[u8]) -> Result<String>;
     fn extract_info_hash(bytes: &[u8]) -> Result<[u8; 20]>;
     fn encode_bencode(value: &BencodeValue, buf: &mut Vec<u8>) -> Result<()>;
+    fn extract_name(bytes: &[u8]) -> Result<String>;
 }
 
 #[derive(Debug, Clone)]
@@ -27,7 +28,7 @@ pub struct TorrentFile {
 }
 
 impl TorrentParser for Torrent {
-    fn extract_announce(bytes: &[u8]) -> Result<String> {
+    fn extract_announce(bytes: &[u8]) -> Result<String, anyhow::Error> {
         let value = Bencoder::BencodeValue::decode(bytes).unwrap();
         let dict = match value {
             BencodeValue::Dictionary(pairs) => pairs,
@@ -50,14 +51,21 @@ impl TorrentParser for Torrent {
             i += 2;
         }
 
-        Err(anyhow!("Announce field not found in dictionary"));
+        Err(anyhow!("Announce field not found in dictionary"))
     }
-
+    fn extract_name(bytes: &[u8]) -> Result<String> {
+        let mut reader = Bytes::from(bytes.to_vec());
+        let value = BencodeValue::decode_from_reader(&mut reader);
+        let dict = match value{
+            OK(BencodeValue::Dictionary(pairs)) => pairs,
+            _ => return Err(anyhow!("Torrent is not a dictionary at the top level"))
+        }
+    }
     fn extract_info_hash(bytes: &[u8]) -> Result<[u8; 20]> {
         let mut reader = Bytes::from(bytes.to_vec());
         let value = BencodeValue::decode_from_reader(&mut reader);
         let dict = match value {
-            BencodeValue::Dictionary(pairs) => pairs,
+            Ok(BencodeValue::Dictionary(pairs)) => pairs,
             _ => return Err(anyhow!("Torrent is not a dictionary at the top level")),
         };
 
@@ -68,7 +76,7 @@ impl TorrentParser for Torrent {
                     let info = &dict[i + 1];
                     let mut buf = Vec::new();
 
-                    Self::encode_bencode(info, buf);
+                    Self::encode_bencode(info, &mut buf);
                     let hash = Sha1::digest(&buf);
 
                     let mut hash_bytes = [0u8; 20];
@@ -85,9 +93,9 @@ impl TorrentParser for Torrent {
     // Helper Functions
     fn encode_bencode(value: &BencodeValue, buf: &mut Vec<u8>) -> Result<()> {
         match value {
-            BencodeValue::Integer(n) => {
+            BencodeValue::Integer(i) => {
                 buf.extend_from_slice(b"i");
-                buf.extend_from_slice(n.to_string().as_bytes());
+                buf.extend_from_slice(i.to_string().as_bytes());
                 buf.extend_from_slice(b"e");
             }
             BencodeValue::List(ls) => {
@@ -115,6 +123,6 @@ impl TorrentParser for Torrent {
                 buf.extend_from_slice(bytes);
             }
         }
-        Ok(());
+        Ok(())
     }
 }
