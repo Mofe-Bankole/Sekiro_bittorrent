@@ -56,11 +56,30 @@ impl TorrentParser for Torrent {
     fn extract_name(bytes: &[u8]) -> Result<String> {
         let mut reader = Bytes::from(bytes.to_vec());
         let value = BencodeValue::decode_from_reader(&mut reader);
-        let dict = match value{
-            OK(BencodeValue::Dictionary(pairs)) => pairs,
-            _ => return Err(anyhow!("Torrent is not a dictionary at the top level"))
+        let dict = match value {
+            Ok(BencodeValue::Dictionary(pairs)) => pairs,
+            _ => return Err(anyhow!("Torrent is not a dictionary at the top level")),
+        };
+
+        let mut i = 0;
+        while i + 1 < dict.len() {
+            if let BencodeValue::Bytes(key_bytes) = &dict[i] {
+                if key_bytes.as_ref() == b"name" {
+                    if let BencodeValue::Bytes(value_bytes) = &dict[i + 1] {
+                        let name = String::from_utf8(value_bytes.to_vec())
+                            .map_err(|_| anyhow!("Invalid UTF-8 in name string"))?;
+                        return Ok(name);
+                    }
+                } else {
+                    return Err(anyhow!(" 'name' is not a byte string"));
+                }
+            }
+            i += 2;
         }
+
+        Err(anyhow!("Name field not found in dictionary"))
     }
+
     fn extract_info_hash(bytes: &[u8]) -> Result<[u8; 20]> {
         let mut reader = Bytes::from(bytes.to_vec());
         let value = BencodeValue::decode_from_reader(&mut reader);

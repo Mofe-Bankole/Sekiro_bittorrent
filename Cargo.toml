@@ -4,16 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.99"
 bendy = "0.3.3"
-bitfield = "0.19.1"
 bytes = "1.10.1"
 chrono = "0.4.41"
-clap = { version = "4.5.42", features = ["derive"] }
-color-eyre = "0.6.5"
-flume = "0.11.1"
-ratatui = { version = "0.29.0", features = ["all-widgets"] }
+clippy = "0.0.302"
+ratatui = "0.29.0"
 sha1 = "0.10.6"
-tokio = "1.46.1"
+tokio = "1.47.1"
 torrex = "0.2.1"
-url = "2.5.4"
