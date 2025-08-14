@@ -79,7 +79,6 @@ impl TorrentParser for Torrent {
 
         Err(anyhow!("Name field not found in dictionary"))
     }
-
     fn extract_info_hash(bytes: &[u8]) -> Result<[u8; 20]> {
         let mut reader = Bytes::from(bytes.to_vec());
         let value = BencodeValue::decode_from_reader(&mut reader);
@@ -95,12 +94,12 @@ impl TorrentParser for Torrent {
                     let info = &dict[i + 1];
                     let mut buf = Vec::new();
 
-                    Self::encode_bencode(info, &mut buf);
+                    Self::encode_bencode(info, &mut buf)?;
                     let hash = Sha1::digest(&buf);
 
                     let mut hash_bytes = [0u8; 20];
                     hash_bytes.copy_from_slice(&hash);
-                    Ok(hash_bytes);
+                    return Ok(hash_bytes);
                 }
             }
             i += 2;
