@@ -1,5 +1,9 @@
 use color_eyre::{Result, eyre::Ok};
-use ratatui::{DefaultTerminal, Frame, Terminal, prelude::Backend};
+use ratatui::{
+    DefaultTerminal, Frame, Terminal,
+    crossterm::event::{self, Event},
+    prelude::Backend,
+};
 
 #[derive(Parser, Debug)]
 struct App {
@@ -11,7 +15,7 @@ fn main() -> Result<()> {
     let terminal = ratatui::init();
     let result = run(terminal);
     ratatui::restore();
-    Ok(result)
+    result;
 }
 
 fn run(mut terminal: DefaultTerminal) -> Result<()> {

@@ -8,6 +8,7 @@ pub trait TorrentParser {
     fn extract_info_hash(bytes: &[u8]) -> Result<[u8; 20]>;
     fn encode_bencode(value: &BencodeValue, buf: &mut Vec<u8>) -> Result<()>;
     fn extract_name(bytes: &[u8]) -> Result<String>;
+    fn extract_piece_length(bytes: &[u8]) -> Result<usize>;
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +54,7 @@ impl TorrentParser for Torrent {
 
         Err(anyhow!("Announce field not found in dictionary"))
     }
+
     fn extract_name(bytes: &[u8]) -> Result<String> {
         let mut reader = Bytes::from(bytes.to_vec());
         let value = BencodeValue::decode_from_reader(&mut reader);
@@ -79,6 +81,7 @@ impl TorrentParser for Torrent {
 
         Err(anyhow!("Name field not found in dictionary"))
     }
+
     fn extract_info_hash(bytes: &[u8]) -> Result<[u8; 20]> {
         let mut reader = Bytes::from(bytes.to_vec());
         let value = BencodeValue::decode_from_reader(&mut reader);
@@ -106,6 +109,41 @@ impl TorrentParser for Torrent {
         }
 
         Err(anyhow!("Info field not found in dictionary"))
+    }
+
+    fn extract_piece_length(bytes: &[u8]) -> Result<usize> {
+        let mut reader = Bytes::from(bytes.to_vec());
+        let value = BencodeValue::decode_from_reader(&mut reader);
+        let dict = match value {
+            Ok(BencodeValue::Dictionary(pairs)) => pairs,
+            _ => return Err(anyhow!("Torrent is not a dictionary at the top level")),
+        };
+
+        let mut i = 0;
+        while i + 1 < dict.len() {
+            if let BencodeValue::Bytes(key_bytes) = &dict[i] {
+                if key_bytes.as_ref() == b"info" {
+                    if let BencodeValue::Dictionary(info_dict) = &dict[i + 1] {
+                        let mut j = 0;
+                        while j + 1 < info_dict.len() {
+                            if let BencodeValue::Bytes(piece_key_bytes) = &info_dict[j] {
+                                if piece_key_bytes.as_ref() == b"piece length" {
+                                    if let BencodeValue::Integer(piece_len) = info_dict[j + 1] {
+                                        return Ok(piece_len as usize);
+                                    } else {
+                                        return Err(anyhow!("piece length is not an integer"));
+                                    }
+                                }
+                            }
+                            j += 2;
+                        }
+                    }
+                }
+            }
+            i += 2
+        }
+
+        Err(anyhow!("Piece Length Was NOT FOUND 404"))
     }
 
     // Helper Functions

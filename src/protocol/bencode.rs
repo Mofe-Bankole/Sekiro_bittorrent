@@ -111,6 +111,7 @@ impl BencodeValue {
     }
 
     pub fn decode_bytes(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+        reader.advance(1);
         let mut length_bytes = Vec::new();
 
         while reader.has_remaining() && !reader.chunk().is_empty() {
