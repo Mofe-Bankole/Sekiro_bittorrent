@@ -9,6 +9,9 @@ pub trait TorrentParser {
     fn encode_bencode(value: &BencodeValue, buf: &mut Vec<u8>) -> Result<()>;
     fn extract_name(bytes: &[u8]) -> Result<String>;
     fn extract_piece_length(bytes: &[u8]) -> Result<usize>;
+    fn extract_pieces(bytes: &[u8]) -> Result<Vec<[u8; 20]>>;
+    fn extract_length(bytes: &[u8]) -> Result<usize>;
+    fn extract_files(bytes: &[u8]) -> Result<Option<Vec<TorrentFile>>>;
 }
 
 #[derive(Debug, Clone)]
@@ -26,6 +29,28 @@ pub struct Torrent {
 pub struct TorrentFile {
     pub path: Vec<String>,
     pub length: usize,
+}
+
+impl Torrent {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let announce = Self::extract_announce(bytes)?;
+        let info_hash = Self::extract_info_hash(bytes)?;
+        let name = Self::extract_name(bytes)?;
+        let piece_length = Self::extract_piece_length(bytes)?;
+        let pieces = Self::extract_pieces(bytes)?;
+        let length = Self::extract_length(bytes)?;
+        let files = Self::extract_files(bytes)?;
+
+        Ok(Torrent {
+            announce,
+            info_hash,
+            piece_length,
+            pieces,
+            name,
+            length,
+            files,
+        })
+    }
 }
 
 impl TorrentParser for Torrent {
@@ -66,20 +91,30 @@ impl TorrentParser for Torrent {
         let mut i = 0;
         while i + 1 < dict.len() {
             if let BencodeValue::Bytes(key_bytes) = &dict[i] {
-                if key_bytes.as_ref() == b"name" {
-                    if let BencodeValue::Bytes(value_bytes) = &dict[i + 1] {
-                        let name = String::from_utf8(value_bytes.to_vec())
-                            .map_err(|_| anyhow!("Invalid UTF-8 in name string"))?;
-                        return Ok(name);
+                if key_bytes.as_ref() == b"info" {
+                    if let BencodeValue::Dictionary(info_dict) = &dict[i + 1] {
+                        let mut j = 0;
+                        while j + 1 < info_dict.len() {
+                            if let BencodeValue::Bytes(name_key_bytes) = &info_dict[j] {
+                                if name_key_bytes.as_ref() == b"name" {
+                                    if let BencodeValue::Bytes(name_bytes) = &info_dict[j + 1] {
+                                        let name = String::from_utf8(name_bytes.to_vec())
+                                            .map_err(|_| anyhow!("Invalid UTF-8 in name string"))?;
+                                        return Ok(name);
+                                    } else {
+                                        return Err(anyhow!("'name' is not a byte string"));
+                                    }
+                                }
+                            }
+                            j += 2;
+                        }
                     }
-                } else {
-                    return Err(anyhow!(" 'name' is not a byte string"));
                 }
             }
             i += 2;
         }
 
-        Err(anyhow!("Name field not found in dictionary"))
+        Err(anyhow!("Name field not found in info dictionary"))
     }
 
     fn extract_info_hash(bytes: &[u8]) -> Result<[u8; 20]> {
@@ -140,10 +175,218 @@ impl TorrentParser for Torrent {
                     }
                 }
             }
-            i += 2
+            i += 2;
         }
 
         Err(anyhow!("Piece Length Was NOT FOUND 404"))
+    }
+
+    fn extract_pieces(bytes: &[u8]) -> Result<Vec<[u8; 20]>> {
+        let mut reader = Bytes::from(bytes.to_vec());
+        let value = BencodeValue::decode_from_reader(&mut reader);
+        let dict = match value {
+            Ok(BencodeValue::Dictionary(pairs)) => pairs,
+            _ => return Err(anyhow!("Torrent is not a dictionary at the top level")),
+        };
+
+        let mut i = 0;
+        while i + 1 < dict.len() {
+            if let BencodeValue::Bytes(key_bytes) = &dict[i] {
+                if key_bytes.as_ref() == b"info" {
+                    if let BencodeValue::Dictionary(info_dict) = &dict[i + 1] {
+                        let mut j = 0;
+                        while j + 1 < info_dict.len() {
+                            if let BencodeValue::Bytes(pieces_key_bytes) = &info_dict[j] {
+                                if pieces_key_bytes.as_ref() == b"pieces" {
+                                    if let BencodeValue::Bytes(pieces_bytes) = &info_dict[j + 1] {
+                                        let pieces_data = pieces_bytes.as_ref();
+                                        if pieces_data.len() % 20 != 0 {
+                                            return Err(anyhow!(
+                                                "Pieces data length is not a multiple of 20"
+                                            ));
+                                        }
+
+                                        let mut pieces = Vec::new();
+                                        for chunk in pieces_data.chunks(20) {
+                                            let mut piece_hash = [0u8; 20];
+                                            piece_hash.copy_from_slice(chunk);
+                                            pieces.push(piece_hash);
+                                        }
+                                        return Ok(pieces);
+                                    } else {
+                                        return Err(anyhow!("'pieces' is not a byte string"));
+                                    }
+                                }
+                            }
+                            j += 2;
+                        }
+                    }
+                }
+            }
+            i += 2;
+        }
+
+        Err(anyhow!("Pieces field not found in info dictionary"))
+    }
+
+    fn extract_length(bytes: &[u8]) -> Result<usize> {
+        let mut reader = Bytes::from(bytes.to_vec());
+        let value = BencodeValue::decode_from_reader(&mut reader);
+        let dict = match value {
+            Ok(BencodeValue::Dictionary(pairs)) => pairs,
+            _ => return Err(anyhow!("Torrent is not a dictionary at the top level")),
+        };
+
+        let mut i = 0;
+        while i + 1 < dict.len() {
+            if let BencodeValue::Bytes(key_bytes) = &dict[i] {
+                if key_bytes.as_ref() == b"info" {
+                    if let BencodeValue::Dictionary(info_dict) = &dict[i + 1] {
+                        let mut j = 0;
+                        while j + 1 < info_dict.len() {
+                            if let BencodeValue::Bytes(length_key_bytes) = &info_dict[j] {
+                                if length_key_bytes.as_ref() == b"length" {
+                                    if let BencodeValue::Integer(length) = info_dict[j + 1] {
+                                        return Ok(length as usize);
+                                    } else {
+                                        return Err(anyhow!("'length' is not an integer"));
+                                    }
+                                }
+                            }
+                            j += 2;
+                        }
+                        // If no length field found, check for files (multi-file torrent)
+                        let mut j = 0;
+                        while j + 1 < info_dict.len() {
+                            if let BencodeValue::Bytes(files_key_bytes) = &info_dict[j] {
+                                if files_key_bytes.as_ref() == b"files" {
+                                    if let BencodeValue::List(files_list) = &info_dict[j + 1] {
+                                        let mut total_length = 0;
+                                        for file_value in files_list {
+                                            if let BencodeValue::Dictionary(file_dict) = file_value
+                                            {
+                                                let mut k = 0;
+                                                while k + 1 < file_dict.len() {
+                                                    if let BencodeValue::Bytes(file_length_key) =
+                                                        &file_dict[k]
+                                                    {
+                                                        if file_length_key.as_ref() == b"length" {
+                                                            if let BencodeValue::Integer(
+                                                                file_length,
+                                                            ) = file_dict[k + 1]
+                                                            {
+                                                                total_length +=
+                                                                    file_length as usize;
+                                                            }
+                                                        }
+                                                    }
+                                                    k += 2;
+                                                }
+                                            }
+                                        }
+                                        return Ok(total_length);
+                                    }
+                                }
+                            }
+                            j += 2;
+                        }
+                    }
+                }
+            }
+            i += 2;
+        }
+
+        Err(anyhow!("Length field not found in info dictionary"))
+    }
+
+    fn extract_files(bytes: &[u8]) -> Result<Option<Vec<TorrentFile>>> {
+        let mut reader = Bytes::from(bytes.to_vec());
+        let value = BencodeValue::decode_from_reader(&mut reader);
+        let dict = match value {
+            Ok(BencodeValue::Dictionary(pairs)) => pairs,
+            _ => return Err(anyhow!("Torrent is not a dictionary at the top level")),
+        };
+
+        let mut i = 0;
+        while i + 1 < dict.len() {
+            if let BencodeValue::Bytes(key_bytes) = &dict[i] {
+                if key_bytes.as_ref() == b"info" {
+                    if let BencodeValue::Dictionary(info_dict) = &dict[i + 1] {
+                        let mut j = 0;
+                        while j + 1 < info_dict.len() {
+                            if let BencodeValue::Bytes(files_key_bytes) = &info_dict[j] {
+                                if files_key_bytes.as_ref() == b"files" {
+                                    if let BencodeValue::List(files_list) = &info_dict[j + 1] {
+                                        let mut torrent_files = Vec::new();
+                                        for file_value in files_list {
+                                            if let BencodeValue::Dictionary(file_dict) = file_value
+                                            {
+                                                let mut file_length = 0;
+                                                let mut file_path = Vec::new();
+
+                                                let mut k = 0;
+                                                while k + 1 < file_dict.len() {
+                                                    if let BencodeValue::Bytes(file_key) =
+                                                        &file_dict[k]
+                                                    {
+                                                        match file_key.as_ref() {
+                                                            b"length" => {
+                                                                if let BencodeValue::Integer(
+                                                                    length,
+                                                                ) = file_dict[k + 1]
+                                                                {
+                                                                    file_length = length as usize;
+                                                                }
+                                                            }
+                                                            b"path" => {
+                                                                if let BencodeValue::List(
+                                                                    path_list,
+                                                                ) = &file_dict[k + 1]
+                                                                {
+                                                                    for path_component in path_list
+                                                                    {
+                                                                        if let BencodeValue::Bytes(
+                                                                            path_bytes,
+                                                                        ) = path_component
+                                                                        {
+                                                                            let path_str = String::from_utf8(path_bytes.to_vec())
+                                                                                .map_err(|_| anyhow!("Invalid UTF-8 in file path"))?;
+                                                                            file_path
+                                                                                .push(path_str);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            _ => {}
+                                                        }
+                                                    }
+                                                    k += 2;
+                                                }
+
+                                                torrent_files.push(TorrentFile {
+                                                    path: file_path,
+                                                    length: file_length,
+                                                });
+                                            }
+                                        }
+                                        return Ok(Some(torrent_files));
+                                    }
+                                } else if files_key_bytes.as_ref() == b"length" {
+                                    // Single file torrent
+                                    return Ok(None);
+                                }
+                            }
+                            j += 2;
+                        }
+                        // If we found info dict but no files field, it's a single-file torrent
+                        return Ok(None);
+                    }
+                }
+            }
+            i += 2;
+        }
+
+        Err(anyhow!("Info field not found in dictionary"))
     }
 
     // Helper Functions
@@ -164,7 +407,7 @@ impl TorrentParser for Torrent {
             BencodeValue::Dictionary(dict) => {
                 buf.extend_from_slice(b"d");
                 let mut i = 0;
-                while i < dict.len() {
+                while i + 1 < dict.len() {
                     let key = &dict[i];
                     let val = &dict[i + 1];
                     Self::encode_bencode(key, buf)?;
