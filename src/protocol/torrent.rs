@@ -242,6 +242,7 @@ impl TorrentParser for Torrent {
             if let BencodeValue::Bytes(key_bytes) = &dict[i] {
                 if key_bytes.as_ref() == b"info" {
                     if let BencodeValue::Dictionary(info_dict) = &dict[i + 1] {
+                        // Case 1: Single-file torrent ("length" present directly)
                         let mut j = 0;
                         while j + 1 < info_dict.len() {
                             if let BencodeValue::Bytes(length_key_bytes) = &info_dict[j] {
@@ -255,28 +256,26 @@ impl TorrentParser for Torrent {
                             }
                             j += 2;
                         }
-                        // If no length field found, check for files (multi-file torrent)
+
+                        // Case 2: Multi-file torrent ("files" list)
                         let mut j = 0;
                         while j + 1 < info_dict.len() {
-                            if let BencodeValue::Bytes(files_key_bytes) = &info_dict[j] {
-                                if files_key_bytes.as_ref() == b"files" {
+                            if let BencodeValue::Bytes(file_key_bytes) = &info_dict[j] {
+                                if file_key_bytes.as_ref() == b"files" {
                                     if let BencodeValue::List(files_list) = &info_dict[j + 1] {
                                         let mut total_length = 0;
-                                        for file_value in files_list {
-                                            if let BencodeValue::Dictionary(file_dict) = file_value
-                                            {
+                                        for file in files_list {
+                                            if let BencodeValue::Dictionary(file_dict) = file {
                                                 let mut k = 0;
                                                 while k + 1 < file_dict.len() {
                                                     if let BencodeValue::Bytes(file_length_key) =
                                                         &file_dict[k]
                                                     {
                                                         if file_length_key.as_ref() == b"length" {
-                                                            if let BencodeValue::Integer(
-                                                                file_length,
-                                                            ) = file_dict[k + 1]
+                                                            if let BencodeValue::Integer(file_length) =
+                                                                file_dict[k + 1]
                                                             {
-                                                                total_length +=
-                                                                    file_length as usize;
+                                                                total_length += file_length as usize;
                                                             }
                                                         }
                                                     }
@@ -295,7 +294,6 @@ impl TorrentParser for Torrent {
             }
             i += 2;
         }
-
         Err(anyhow!("Length field not found in info dictionary"))
     }
 
