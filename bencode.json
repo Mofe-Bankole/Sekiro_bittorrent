@@ -8,6 +8,7 @@
   "comment": "Example torrent file for demonstration",
   "created by": "Grok 3 / xAI",
   "creation date": 1740876480,
+
   "info": {
     "name": "Sample_Torrent",
     "piece length": 262144,

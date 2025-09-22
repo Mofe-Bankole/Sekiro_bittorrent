@@ -1,8 +1,9 @@
 use clap::Parser;
 use color_eyre::Result;
+use colored::Colorize;
 use ratatui::{
     DefaultTerminal,
-    crossterm::event::{self, Event, KeyCode},
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     prelude::*,
     widgets::Paragraph,
 };
@@ -57,33 +58,49 @@ impl App {
             KeyCode::Char('q') => self.quit(),
             KeyCode::Char('p') => self.previous(),
             KeyCode::Char('n') => self.next(),
+            KeyCode::Esc => self.quit(),
             _ => {}
         }
     }
-
-    // pub fn handle_mouse_evene
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let path = args.path.expect("Path not provided");
+    let path = args.path.unwrap_or_else(|| {
+        eprintln!("Path not provided, using current directory");
+        PathBuf::from(".")
+    });
+
     color_eyre::install()?;
     let terminal = ratatui::init();
-    let result = run(terminal);
+    let app = App::new(path, "BitTorrent Clone".to_string());
+    let result = run(terminal, app);
     ratatui::restore();
     result
 }
 
-fn run(mut terminal: DefaultTerminal) -> Result<()> {
+fn run(mut terminal: DefaultTerminal, mut app: App) -> Result<()> {
     loop {
-        terminal.draw(render)?;
-        if matches!(event::read()?, Event::Key(_)) {
-            break Ok(());
+        terminal.draw(|frame| render(frame, &app))?;
+
+        if let Event::Key(key) = event::read()? {
+            if key.kind == KeyEventKind::Press {
+                app.handle_key_input(key.code);
+            }
+
+            if app.should_quit {
+                break;
+            }
         }
     }
+    Ok(())
 }
 
-fn render(frame: &mut Frame) {
-    let text = Paragraph::new("hello world");
+fn render(frame: &mut Frame, app: &App) {
+    let text = Paragraph::new(format!(
+        "BitTorrent Clone - Press 'q' or 'Esc' to quit\nPath: {}\nSelected Index: {}",
+        app.path.display(),
+        app.selected_index
+    ));
     frame.render_widget(text, frame.area());
 }

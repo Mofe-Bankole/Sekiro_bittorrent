@@ -272,10 +272,12 @@ impl TorrentParser for Torrent {
                                                         &file_dict[k]
                                                     {
                                                         if file_length_key.as_ref() == b"length" {
-                                                            if let BencodeValue::Integer(file_length) =
-                                                                file_dict[k + 1]
+                                                            if let BencodeValue::Integer(
+                                                                file_length,
+                                                            ) = file_dict[k + 1]
                                                             {
-                                                                total_length += file_length as usize;
+                                                                total_length +=
+                                                                    file_length as usize;
                                                             }
                                                         }
                                                     }
@@ -348,7 +350,7 @@ impl TorrentParser for Torrent {
                                                                         ) = path_component
                                                                         {
                                                                             let path_str = String::from_utf8(path_bytes.to_vec())
-                                                                                .map_err(|_| anyhow!("Invalid UTF-8 in file path"))?;
+                                                                                .map_err(|e| anyhow!("Invalid UTF-8 in File path , Error parsing file {}" , e ))?;
                                                                             file_path
                                                                                 .push(path_str);
                                                                         }
@@ -397,8 +399,8 @@ impl TorrentParser for Torrent {
             }
             BencodeValue::List(ls) => {
                 buf.extend_from_slice(b"l");
-                for item in ls {
-                    Self::encode_bencode(item, buf)?;
+                for i in ls {
+                    Self::encode_bencode(i, buf)?;
                 }
                 buf.extend_from_slice(b"e");
             }
