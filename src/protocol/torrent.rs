@@ -1,3 +1,5 @@
+use std::usize;
+
 use crate::protocol::bencode::{self as Bencoder, BencodeValue};
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
@@ -18,7 +20,9 @@ pub trait TorrentParser {
 pub struct Torrent {
     pub announce: String,
     pub info_hash: [u8; 20],
+    /// Lenght of a single piece in the torrent ( 256 - 1024kb  , might be 2,3mb depending on creator)
     pub piece_length: usize,
+    /// Pieces of the torrent
     pub pieces: Vec<[u8; 20]>,
     pub name: String,
     pub length: usize,
@@ -55,7 +59,7 @@ impl Torrent {
 
 impl TorrentParser for Torrent {
     fn extract_announce(bytes: &[u8]) -> Result<String, anyhow::Error> {
-        let value = Bencoder::BencodeValue::decode(bytes).unwrap();
+        let value = Bencoder::BencodeValue::decode(bytes)?;
         let dict = match value {
             BencodeValue::Dictionary(pairs) => pairs,
             _ => return Err(anyhow!("Torrent is not a dictionary at the top level")),
@@ -242,51 +246,47 @@ impl TorrentParser for Torrent {
             if let BencodeValue::Bytes(key_bytes) = &dict[i] {
                 if key_bytes.as_ref() == b"info" {
                     if let BencodeValue::Dictionary(info_dict) = &dict[i + 1] {
-                        // Case 1: Single-file torrent ("length" present directly)
                         let mut j = 0;
                         while j + 1 < info_dict.len() {
                             if let BencodeValue::Bytes(length_key_bytes) = &info_dict[j] {
-                                if length_key_bytes.as_ref() == b"length" {
-                                    if let BencodeValue::Integer(length) = info_dict[j + 1] {
-                                        return Ok(length as usize);
-                                    } else {
-                                        return Err(anyhow!("'length' is not an integer"));
+                                match length_key_bytes.as_ref() {
+                                    b"length" => {
+                                        if let BencodeValue::Integer(length) = info_dict[j + 1] {
+                                            return Ok(length as usize);
+                                        } else {
+                                            return Err(anyhow!("Length is not a usize"));
+                                        }
                                     }
-                                }
-                            }
-                            j += 2;
-                        }
-
-                        // Case 2: Multi-file torrent ("files" list)
-                        let mut j = 0;
-                        while j + 1 < info_dict.len() {
-                            if let BencodeValue::Bytes(file_key_bytes) = &info_dict[j] {
-                                if file_key_bytes.as_ref() == b"files" {
-                                    if let BencodeValue::List(files_list) = &info_dict[j + 1] {
-                                        let mut total_length = 0;
-                                        for file in files_list {
-                                            if let BencodeValue::Dictionary(file_dict) = file {
-                                                let mut k = 0;
-                                                while k + 1 < file_dict.len() {
-                                                    if let BencodeValue::Bytes(file_length_key) =
-                                                        &file_dict[k]
-                                                    {
-                                                        if file_length_key.as_ref() == b"length" {
-                                                            if let BencodeValue::Integer(
-                                                                file_length,
-                                                            ) = file_dict[k + 1]
+                                    b"files" => {
+                                        if let BencodeValue::List(files_list) = &info_dict[j + 1] {
+                                            let mut total_length = 0;
+                                            for file in files_list {
+                                                if let BencodeValue::Dictionary(file_dict) = file {
+                                                    let mut k = 0;
+                                                    while k + 1 < file_dict.len() {
+                                                        if let BencodeValue::Bytes(
+                                                            file_length_key,
+                                                        ) = &file_dict[k]
+                                                        {
+                                                            if file_length_key.as_ref() == b"length"
                                                             {
-                                                                total_length +=
-                                                                    file_length as usize;
+                                                                if let BencodeValue::Integer(
+                                                                    file_length,
+                                                                ) = file_dict[k + 1]
+                                                                {
+                                                                    total_length +=
+                                                                        file_length as usize;
+                                                                }
                                                             }
                                                         }
+                                                        k += 2;
                                                     }
-                                                    k += 2;
                                                 }
                                             }
+                                            return Ok(total_length);
                                         }
-                                        return Ok(total_length);
                                     }
+                                    _ => {}
                                 }
                             }
                             j += 2;

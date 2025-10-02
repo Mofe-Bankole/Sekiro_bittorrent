@@ -12,9 +12,6 @@ pub enum BencodeValue {
 }
 
 impl BencodeValue {
-    // This Fn calls all other Fns
-    // This Fn call the decode_from_reader function which in turn contains a match statement
-    // The Match Statement auto-selects what to decode
     pub fn decode(bytes: &[u8]) -> Result<BencodeValue, Error> {
         let mut reader: Bytes = Bytes::from(bytes.to_vec());
         let value: BencodeValue = Self::decode_from_reader(&mut reader)?;
@@ -28,6 +25,9 @@ impl BencodeValue {
         Ok(value)
     }
 
+    // This Fn calls all other Fns
+    // This Fn call the decode_from_reader function which in turn contains a match statement
+    // The Match Statement auto-selects what to decode
     pub fn decode_from_reader(reader: &mut Bytes) -> Result<BencodeValue, Error> {
         if !reader.has_remaining() {
             return Err(anyhow!("No Data Remaining To Decode"));
@@ -54,6 +54,7 @@ impl BencodeValue {
         if !reader.has_remaining() || reader.chunk()[0] != b'e' {
             return Err(anyhow!("List not terminated by 'e'"));
         }
+
         reader.advance(1);
         Ok(BencodeValue::List(list))
     }
@@ -111,7 +112,6 @@ impl BencodeValue {
     }
 
     pub fn decode_bytes(reader: &mut Bytes) -> Result<BencodeValue, Error> {
-        reader.advance(1);
         let mut length_bytes = Vec::new();
 
         while reader.has_remaining() && !reader.chunk().is_empty() {
