@@ -1,6 +1,9 @@
+use crate::block_manager::{BlockData, BlockInfo, BlockManager};
 use clap::Parser;
 use color_eyre::Result;
-use mini_p2p_file_transfer_system::protocol::torrent::Torrent;
+use mini_p2p_file_transfer_system::{
+    net::download_manager::BlockManager, protocol::torrent::Torrent, storage::files::FileStorage,
+};
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyCode, KeyEventKind},
@@ -25,7 +28,9 @@ pub struct App {
     pub should_quit: bool,
     pub selected_index: usize,
     pub torrent: Option<Torrent>,
-    pub download_dir : PathBuf
+    pub file_storage: Option<FileStorage>,
+    pub download_dir: PathBuf,
+    pub block_manager: Option<BlockManager>,
     pub error_message: Option<String>,
 }
 
@@ -38,7 +43,9 @@ impl App {
             selected_index: 0,
             torrent: None,
             error_message: None,
-            download_dir : PathBuf::from("~/Downloads")
+            download_dir: PathBuf::from("~/Downloads"),
+            file_storage: FileStorage,
+            block_manager: BlockManager,
         }
     }
 
@@ -86,13 +93,29 @@ impl App {
             return;
         }
 
-
         match fs::read(&self.path) {
-            // saves it if its an actual torrent
+            // Converts the READ file to a Torrent
             Ok(bytes) => match Torrent::from_bytes(&bytes) {
                 Ok(torrent) => {
                     self.torrent = Some(torrent);
-                    self.error_message = None
+                    self.error_message = None;
+
+                    match FileStorage::new(torrent.clone(), self.download_dir) {
+                        Ok(storage) => match BlockManager::new(torrent.clone(), storage) {
+                            Ok(manager) => {
+                                self.block_manager = manager;
+                                self.error_message = None;
+                            }
+                            Err(e) => {
+                                self.error_message =
+                                    Some(format!("Failed to init block manager: {}", e));
+                            }
+                        },
+                        Err(e) => {
+                            self.error_message =
+                                Some(format!("File Storage could not be built : {}", e))
+                        }
+                    }
                 }
                 Err(e) => {
                     self.torrent = None;
@@ -106,7 +129,79 @@ impl App {
         }
     }
 
-    pub fn execute_selected_action(&mut self){
+    pub fn simulate_download_step(&mut self) {
+        if let Some(manager) = &mut self.block_manager {
+            // Get next piece to work on
+            if let Some(piece_index) = manager.get_next_piece_to_download() {
+                // Get all blocks for this piece
+                loop {
+                    match manager.get_next_block_request(piece_index) {
+                        Some(block_info) => {
+                            // Simulate receiving block data
+                            // In real app, this comes from network
+                            let dummy_data = vec![0u8; block_info.length];
+
+                            let block_data = BlockData {
+                                info: block_info,
+                                data: dummy_data,
+                                received_at: std::time::Instant::now(),
+                            };
+
+                            // Process the block
+                            match manager.handle_block_received(block_data) {
+                                Ok(_) => {
+                                    // Block processed successfully
+                                }
+                                Err(e) => {
+                                    self.error_message = Some(format!("Block error: {}", e));
+                                    break;
+                                }
+                            }
+                        }
+                        None => {
+                            // No more blocks for this piece
+                            break;
+                        }
+                    }
+                }
+
+                // Update status
+                let stats = manager.get_stats();
+                self.status_message = Some(format!(
+                    "Downloaded piece {}. Progress: {:.1}%",
+                    piece_index,
+                    stats.progress_percentage()
+                ));
+            } else {
+                self.status_message = Some("Download complete!".to_string());
+            }
+        } else {
+            self.error_message = Some("No block manager initialized".to_string());
+        }
+    }
+
+    pub fn show_stats(&mut self) {
+        if let Some(manager) = &self.block_manager {
+            let stats = manager.get_stats();
+
+            let message = format!(
+                "Progress: {}/{} pieces ({:.1}%)\n\
+                Downloaded: {} / {} bytes\n\
+                Speed: {:.2} KB/s\n\
+                Missing: {} pieces",
+                stats.verified_pieces,
+                stats.total_pieces,
+                stats.progress_percentage(),
+                stats.downloaded_bytes,
+                stats.total_bytes,
+                stats.download_speed_bps() / 1024.0,
+                manager.get_missing_piece_count()
+            );
+
+            self.status_message = Some(message);
+        }
+    }
+    pub fn execute_selected_action(&mut self) {
         match self.selected_index {
             0 => self.view_torrent_data(),
             1 => self.view_peers(),
@@ -159,24 +254,67 @@ fn run(mut terminal: DefaultTerminal, mut app: App) -> Result<()> {
 
 fn render(frame: &mut Frame, app: &App) {
     let mut content = String::new();
-    let options = vec!["View Torrent Data", "View Peers", "Exit Program"];
 
-    content.push_str( "----------BitTorrent Clone - Press 'q' or 'Esc' to quit--------\nPath: {}\nSelected Index: {}");
-    content.push_str(&format!("Torrent files : {}\n", app.path.display()));
-    content.push_str(&format!("Download dir : {}\n", app.download_dir.display()));
-    content.push_str(&format!("Selected Index: {}\n", app.selected_index));
-    content.push_str("Controls: q=Quit, p/n=Previous/Next, r=Reload\n\n");
+    content.push_str("========== BitTorrent Clone ==========\n");
+    content.push_str(&format!("Torrent: {}\n", app.path.display()));
+    content.push_str(&format!("Download Dir: {}\n\n", app.download_dir.display()));
+
+    content.push_str("Controls:\n");
+    content.push_str("  q/Esc: Quit\n");
+    content.push_str("  r: Reload torrent\n");
+    content.push_str("  d: Download next piece\n");
+    content.push_str("  s: Show statistics\n\n");
 
     if let Some(error) = &app.error_message {
         content.push_str(&format!("ERROR: {}\n\n", error));
     }
 
-    for (i , option) in options.iter().enumerate(){
-        if i == app.selected_index {
-            content.push_str(&format!("> {} <\n", option)); // Highlight selected
-        } else {
-            content.push_str(&format!("  {}\n", option));
-        }
+    if let Some(status) = &app.status_message {
+        content.push_str(&format!("STATUS: {}\n\n", status));
     }
-    frame.render_widget(content, frame.area());
+
+    // Show torrent info
+    if let Some(torrent) = &app.torrent {
+        content.push_str(&format!(
+            "Torrent Info:\n\
+            - Name: {}\n\
+            - Size: {} bytes\n\
+            - Pieces: {}\n\
+            - Piece Length: {} bytes\n\n",
+            torrent.name,
+            torrent.length,
+            torrent.pieces.len(),
+            torrent.piece_length
+        ));
+    }
+
+    // Show download progress
+    if let Some(manager) = &app.block_manager {
+        let stats = manager.get_stats();
+
+        content.push_str("Download Progress:\n");
+
+        // Progress bar
+        let bar_width = 40;
+        let filled = if stats.total_pieces > 0 {
+            (stats.verified_pieces * bar_width) / stats.total_pieces
+        } else {
+            0
+        };
+        let bar = "=".repeat(filled) + &"-".repeat(bar_width - filled);
+        content.push_str(&format!(
+            "[{}] {:.1}%\n\n",
+            bar,
+            stats.progress_percentage()
+        ));
+
+        content.push_str(&format!(
+            "Pieces: {}/{}\n\
+            Bytes: {}/{}\n",
+            stats.verified_pieces, stats.total_pieces, stats.downloaded_bytes, stats.total_bytes
+        ));
+    }
+
+    let text = Paragraph::new(content).wrap(ratatui::widgets::Wrap { trim: true });
+    frame.render_widget(text, frame.area());
 }
