@@ -5,6 +5,9 @@ use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use sha1::{Digest, Sha1};
 
+/// Traits of the torrent
+// This simply allows us to create special functions which u can use to extract info from the torrent file
+// Any problems understanding pls DM
 pub trait TorrentParser {
     fn extract_announce(bytes: &[u8]) -> Result<String>;
     fn extract_info_hash(bytes: &[u8]) -> Result<[u8; 20]>;
@@ -17,6 +20,7 @@ pub trait TorrentParser {
 }
 
 #[derive(Debug, Clone)]
+/// Data representation of a Torrent
 pub struct Torrent {
     pub announce: String,
     pub info_hash: [u8; 20],
@@ -30,6 +34,7 @@ pub struct Torrent {
 }
 
 #[derive(Debug, Clone)]
+/// Data representation of a Torrent File, a file that has not yet been written to disk
 pub struct TorrentFile {
     pub path: Vec<String>,
     pub length: usize,

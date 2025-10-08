@@ -1,8 +1,9 @@
-use crate::block_manager::{BlockData, BlockInfo, BlockManager};
 use clap::Parser;
 use color_eyre::Result;
 use mini_p2p_file_transfer_system::{
-    net::download_manager::BlockManager, protocol::torrent::Torrent, storage::files::FileStorage,
+    net::{block_manager::Block, piece_manager::BlockManager},
+    protocol::torrent::{self, Torrent},
+    storage::files::FileStorage,
 };
 use ratatui::{
     DefaultTerminal,
@@ -10,7 +11,11 @@ use ratatui::{
     prelude::*,
     widgets::Paragraph,
 };
-use std::{fmt::format, fs, path::PathBuf, vec};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    vec,
+};
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
@@ -30,6 +35,7 @@ pub struct App {
     pub torrent: Option<Torrent>,
     pub file_storage: Option<FileStorage>,
     pub download_dir: PathBuf,
+    pub status_message: Option<String>,
     pub block_manager: Option<BlockManager>,
     pub error_message: Option<String>,
 }
@@ -43,9 +49,10 @@ impl App {
             selected_index: 0,
             torrent: None,
             error_message: None,
+            status_message: None,
             download_dir: PathBuf::from("~/Downloads"),
-            file_storage: FileStorage,
-            block_manager: BlockManager,
+            file_storage: None,
+            block_manager: None,
         }
     }
 
@@ -75,7 +82,7 @@ impl App {
         // Checks if the path exists
         if !self.path.exists() {
             self.error_message = Some(format!(
-                "Torrent Filed Does not exist : {}",
+                "Torrent File Does not exist : {}",
                 self.path.display()
             ));
             self.torrent = None;
@@ -94,26 +101,29 @@ impl App {
         }
 
         match fs::read(&self.path) {
-            // Converts the READ file to a Torrent
+            // Converts the 'READ' file to a Torrent
             Ok(bytes) => match Torrent::from_bytes(&bytes) {
                 Ok(torrent) => {
                     self.torrent = Some(torrent);
                     self.error_message = None;
+                    let down_dir = self.download_dir.clone();
 
-                    match FileStorage::new(torrent.clone(), self.download_dir) {
-                        Ok(storage) => match BlockManager::new(torrent.clone(), storage) {
-                            Ok(manager) => {
-                                self.block_manager = manager;
-                                self.error_message = None;
-                            }
+                    if let Some(torrent) = self.torrent.clone() {
+                        match FileStorage::new(torrent.clone(), down_dir) {
+                            Ok(storage) => match BlockManager::new(torrent, storage) {
+                                Ok(manager) => {
+                                    self.block_manager = Some(manager);
+                                    self.error_message = None;
+                                }
+                                Err(e) => {
+                                    self.error_message =
+                                        Some(format!("Failed to init block manager: {}", e));
+                                }
+                            },
                             Err(e) => {
                                 self.error_message =
-                                    Some(format!("Failed to init block manager: {}", e));
+                                    Some(format!("File Storage could not be built : {}", e));
                             }
-                        },
-                        Err(e) => {
-                            self.error_message =
-                                Some(format!("File Storage could not be built : {}", e))
                         }
                     }
                 }
@@ -129,6 +139,17 @@ impl App {
         }
     }
 
+    // pub fn init_block_manager(&mut self, down_dir: &PathBuf) -> Result<(), String> {
+    //     let storage = FileStorage::new(self.torrent.clone().unwrap(), down_dir.clone())
+    //         .map_err(|e| format!("File Storage could not be built: {}", e))?;
+    //     let manager = BlockManager::new(self.torrent.clone().unwrap(), storage)
+    //         .map_err(|e| format!("Failed to init block manager: {}", e))?;
+
+    //     self.block_manager = Some(manager);
+    //     self.error_message = None;
+    //     Ok(())
+    // }
+
     pub fn simulate_download_step(&mut self) {
         if let Some(manager) = &mut self.block_manager {
             // Get next piece to work on
@@ -141,7 +162,7 @@ impl App {
                             // In real app, this comes from network
                             let dummy_data = vec![0u8; block_info.length];
 
-                            let block_data = BlockData {
+                            let block_data = Block {
                                 info: block_info,
                                 data: dummy_data,
                                 received_at: std::time::Instant::now(),
@@ -201,11 +222,13 @@ impl App {
             self.status_message = Some(message);
         }
     }
+
     pub fn execute_selected_action(&mut self) {
         match self.selected_index {
             0 => self.view_torrent_data(),
             1 => self.view_peers(),
             2 => self.quit(),
+            _ => todo!(),
         }
     }
 
