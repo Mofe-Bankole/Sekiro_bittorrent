@@ -1,0 +1,9 @@
+http://tracker.example.com:8080/announce?
+  info_hash=%3A%5F%12...        (URL-encoded 20 bytes)
+  &peer_id=-RS0001-...          (Your client ID)
+  &port=6881
+  &uploaded=0
+  &downloaded=0
+  &left=4000000
+  &compact=1
+  &event=started
