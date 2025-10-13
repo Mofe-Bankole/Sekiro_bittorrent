@@ -25,10 +25,12 @@ impl BencodeValue {
         Ok(value)
     }
 
-    // This Fn calls all other Fns
-    // This Fn call the decode_from_reader function which in turn contains a match statement
-    // The Match Statement auto-selects what to decode
-    pub fn decode_from_reader(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    /// This Fn calls all other Fns
+    ///
+    /// This Fn call the decode_from_reader function which in turn contains a match statement
+    ///
+    /// The Match Statement auto-selects what to decode
+    pub fn decode_from_reader(reader: &mut Bytes) -> Result<BencodeValue, anyhow::Error> {
         if !reader.has_remaining() {
             return Err(anyhow!("No Data Remaining To Decode"));
         }
@@ -43,7 +45,7 @@ impl BencodeValue {
     }
 
     // Decoding Functionality for Lists
-    pub fn decode_list(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    pub fn decode_list(reader: &mut Bytes) -> Result<BencodeValue, anyhow::Error> {
         reader.advance(1);
         let mut list = Vec::new();
 
@@ -59,8 +61,10 @@ impl BencodeValue {
         Ok(BencodeValue::List(list))
     }
 
-    // Decoding Functionality for Integers
-    pub fn decode_integer(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    /// Decoding Functionality for Integers
+    ///
+    /// Integers begin at b'i' and end at b'e'
+    pub fn decode_integer(reader: &mut Bytes) -> Result<BencodeValue, anyhow::Error> {
         reader.advance(1);
         let mut number_bytes = Vec::new();
 

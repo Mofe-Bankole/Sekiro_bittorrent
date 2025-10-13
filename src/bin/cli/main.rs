@@ -1,21 +1,17 @@
 use clap::Parser;
 use color_eyre::Result;
 use mini_p2p_file_transfer_system::{
-    net::{block_manager::Block, piece_manager::BlockManager},
-    protocol::torrent::{self, Torrent},
+    net::{piece_manager::Block, block_manager::BlockManager},
+    protocol::torrent::Torrent,
     storage::files::FileStorage,
 };
 use ratatui::{
-    DefaultTerminal,
     crossterm::event::{self, Event, KeyCode, KeyEventKind},
     prelude::*,
     widgets::Paragraph,
+    DefaultTerminal,
 };
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    vec,
-};
+use std::{fs, path::PathBuf, vec};
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
@@ -138,18 +134,7 @@ impl App {
             }
         }
     }
-
-    // pub fn init_block_manager(&mut self, down_dir: &PathBuf) -> Result<(), String> {
-    //     let storage = FileStorage::new(self.torrent.clone().unwrap(), down_dir.clone())
-    //         .map_err(|e| format!("File Storage could not be built: {}", e))?;
-    //     let manager = BlockManager::new(self.torrent.clone().unwrap(), storage)
-    //         .map_err(|e| format!("Failed to init block manager: {}", e))?;
-
-    //     self.block_manager = Some(manager);
-    //     self.error_message = None;
-    //     Ok(())
-    // }
-
+    
     pub fn simulate_download_step(&mut self) {
         if let Some(manager) = &mut self.block_manager {
             // Get next piece to work on
