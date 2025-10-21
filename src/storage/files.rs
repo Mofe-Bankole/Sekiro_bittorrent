@@ -14,6 +14,7 @@ pub struct FileStorage {
     /// File mappings for multi-file torrents
     ///
     /// File mapping is simply mapping path routes for files in the torrent
+    ///
     /// So eg lets say a torrent has a folder called 'media/james.png' this struct allows us to create a mapping for that '.png' file
     /// Whether the file is in a dir or not
     pub file_map: Vec<FileMapping>,
@@ -43,7 +44,7 @@ pub struct PieceWrite {
 // type WriteToFileFn = fn(&FileStorage, path: &Path, offset: usize, data: &[u8]) -> Result<()>;
 
 impl FileStorage {
-    pub fn new(torrent: Torrent, download_dir: PathBuf) -> Result<Self> {
+    pub fn from(torrent: Torrent, download_dir: PathBuf) -> Result<Self> {
         let file_map = Self::build_file_map(&torrent, &download_dir)?;
         let total_length = torrent.length;
 

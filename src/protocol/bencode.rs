@@ -6,6 +6,7 @@ use bytes::{Buf, Bytes};
 // Bencode struct
 pub enum BencodeValue {
     List(Vec<BencodeValue>),
+    /// Dictionary
     Dictionary(Vec<BencodeValue>),
     Bytes(Bytes),
     Integer(i64),
@@ -95,7 +96,7 @@ impl BencodeValue {
     }
 
     // Decoding Functionality for Dictionaries
-    pub fn decode_dictionary(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    pub fn decode_dictionary(reader: &mut Bytes) -> Result<BencodeValue, anyhow::Error> {
         reader.advance(1);
         let mut dictionary = Vec::new();
 
@@ -115,7 +116,7 @@ impl BencodeValue {
         Ok(BencodeValue::Dictionary(dictionary))
     }
 
-    pub fn decode_bytes(reader: &mut Bytes) -> Result<BencodeValue, Error> {
+    pub fn decode_bytes(reader: &mut Bytes) -> Result<BencodeValue, anyhow::Error> {
         let mut length_bytes = Vec::new();
 
         while reader.has_remaining() && !reader.chunk().is_empty() {
@@ -135,6 +136,7 @@ impl BencodeValue {
         if !reader.has_remaining() || reader.chunk()[0] != b':' {
             return Err(anyhow!("Expected Values not Found"));
         }
+
         reader.advance(1);
 
         let length_str = String::from_utf8(length_bytes)?;

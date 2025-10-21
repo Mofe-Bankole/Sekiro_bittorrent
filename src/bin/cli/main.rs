@@ -1,15 +1,15 @@
 use clap::Parser;
 use color_eyre::Result;
 use mini_p2p_file_transfer_system::{
-    net::{piece_manager::Block, block_manager::BlockManager},
+    net::{block_manager::BlockManager, piece_manager::Block},
     protocol::torrent::Torrent,
     storage::files::FileStorage,
 };
 use ratatui::{
+    DefaultTerminal,
     crossterm::event::{self, Event, KeyCode, KeyEventKind},
     prelude::*,
     widgets::Paragraph,
-    DefaultTerminal,
 };
 use std::{fs, path::PathBuf, vec};
 
@@ -105,8 +105,8 @@ impl App {
                     let down_dir = self.download_dir.clone();
 
                     if let Some(torrent) = self.torrent.clone() {
-                        match FileStorage::new(torrent.clone(), down_dir) {
-                            Ok(storage) => match BlockManager::new(torrent, storage) {
+                        match FileStorage::from(torrent.clone(), down_dir) {
+                            Ok(storage) => match BlockManager::from(torrent, storage) {
                                 Ok(manager) => {
                                     self.block_manager = Some(manager);
                                     self.error_message = None;
@@ -134,7 +134,7 @@ impl App {
             }
         }
     }
-    
+
     pub fn simulate_download_step(&mut self) {
         if let Some(manager) = &mut self.block_manager {
             // Get next piece to work on

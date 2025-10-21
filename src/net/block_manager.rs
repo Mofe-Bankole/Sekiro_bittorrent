@@ -12,6 +12,7 @@ use std::{
 };
 
 #[derive(Debug)]
+/// Handles blocks for a torrent
 pub struct BlockManager {
     torrent: Torrent,
     pieces: Vec<Arc<Mutex<Piece>>>,
@@ -65,8 +66,10 @@ impl DownloadStats {
     }
 }
 
+// Will implement From for learning purposes
+// impl From<'a> for BlockManager {}
 impl BlockManager {
-    pub fn new(torrent: Torrent, storage: FileStorage) -> Result<Self, Error> {
+    pub fn from(torrent: Torrent, storage: FileStorage) -> Result<Self, Error> {
         let mut pieces = Vec::new();
         let piece_length = torrent.piece_length;
         let total_length = torrent.length;

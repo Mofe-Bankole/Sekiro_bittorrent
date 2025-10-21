@@ -7,7 +7,11 @@ pub struct Peer {
 }
 
 impl Peer {
-    pub fn socket_addr(&self) -> SocketAddr {
+    pub fn new(ip: IpAddr, port: u16) -> Self {
+        Self { ip, port }
+    }
+
+    pub fn from(&self) -> SocketAddr {
         SocketAddr::new(self.ip, self.port)
     }
 }
