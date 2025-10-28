@@ -3,7 +3,7 @@ use bytes::{Buf, Bytes};
 
 #[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-// Bencode struct
+/// Bencode Enum
 pub enum BencodeValue {
     List(Vec<BencodeValue>),
     /// Dictionary
@@ -15,6 +15,7 @@ pub enum BencodeValue {
 impl BencodeValue {
     pub fn decode(bytes: &[u8]) -> Result<BencodeValue, Error> {
         let mut reader: Bytes = Bytes::from(bytes.to_vec());
+        // calls decode_from_reader to decode each data type present
         let value: BencodeValue = Self::decode_from_reader(&mut reader)?;
 
         if reader.has_remaining() {
@@ -116,6 +117,7 @@ impl BencodeValue {
         Ok(BencodeValue::Dictionary(dictionary))
     }
 
+    /// Decodes bytes
     pub fn decode_bytes(reader: &mut Bytes) -> Result<BencodeValue, anyhow::Error> {
         let mut length_bytes = Vec::new();
 

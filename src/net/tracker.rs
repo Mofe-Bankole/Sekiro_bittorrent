@@ -1,8 +1,7 @@
 use crate::protocol::{bencode::BencodeValue, peer::Peer};
 use anyhow::{Result, anyhow};
-use bytes::Bytes;
 use color_eyre::{eyre::Ok, owo_colors::OwoColorize};
-use serde::Serialize;
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
@@ -33,7 +32,7 @@ pub struct TrackerRequest {
     pub event: Option<TrackerEvent>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct TrackerResponse {
     pub interval: u64,
     pub peers: Vec<Peer>,
@@ -42,6 +41,7 @@ pub struct TrackerResponse {
     pub tracker_id: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct Tracker {
     announce_url: String,
     peer_id: [u8; 20],
@@ -72,12 +72,12 @@ impl Tracker {
         peer_id
     }
 
-    pub async fn announce(&self, request: TrackerRequest) -> Result<TrackerResponse> {
+    pub async fn announce(
+        &self,
+        request: TrackerRequest,
+    ) -> Result<TrackerResponse, anyhow::Error> {
         let url = self.build_announce_url(&request);
-        println!(
-            "Contacting tracker at: {}",
-            self.announce_url.bright_black()
-        );
+        println!("Contacting tracker at : {}", self.announce_url.green()).bright_black();
 
         let client = reqwest::Client::new();
         let response = client.get(&url).send().await?;
@@ -89,7 +89,7 @@ impl Tracker {
         let body = response
             .bytes()
             .await
-            .map_err(|e| anyhow!("Failed to read response body: {}", e))?;
+            .map_err(|e| anyhow!("Failed to read response body : {}", e))?;
 
         println!("Response bytes: {:?}", body);
 
@@ -128,71 +128,63 @@ impl Tracker {
             .collect()
     }
 
-    fn parse_tracker_response(&self, data: &[u8]) -> Result<TrackerResponse> {
+    pub fn parse_tracker_response(&self, data: &[u8]) -> Result<TrackerResponse> {
         let value = BencodeValue::decode(data)?;
-        let interval = None;
-        let peers = None;
-        let complete = None;
-        let compact = None;
-        let incomplete = None;
+
         let dict = match value {
             BencodeValue::Dictionary(map) => map,
             _ => return Err(anyhow!("Tracker response is not a dictionary")),
         };
 
-        for i in 0..=dict.len() {
-            if let BencodeValue::Bytes(key_bytes) = &dict[i] {
-                if key_bytes == "interval" {
-                    if let BencodeValue::Integer(i) = &dict[i + 1] {
-                        Some(i)
-                        return Err(anyhow!("Missing interval in tracker response"));
-                    }
-                } else if key_bytes == "compact" {
-                    if let BencodeValue::Integer(i) = &dict[i + 1] {
-                        return Err(anyhow!("Missing compact in tracker response"));
-                    }
-                } else if key_bytes == "incomplete" {
-                    if let BencodeValue::Integer(i) = &dict[i + 1] {
-                        peers = Some(())
-                        return Err(anyhow!("Missing incomplete in tracker response"));
-                    }
-                } else if key_bytes == "peers" {
-                    if let BencodeValue::Integer(i) = &dict[i + 1] {
-                        return Err(anyhow!("Missing Peers in tracker response"));
+        let mut interval = None;
+        let mut peers_data = None;
+        let mut complete = None;
+        let mut incomplete = None;
+        let mut tracker_id = None;
+        let mut failure_reason = None;
+
+        // Iterate over dictionary entries
+        for (key_bytes, val) in dict {
+            let key = String::from_utf8_lossy(&key_bytes).to_string();
+
+            match key.as_str() {
+                "interval" => {
+                    if let BencodeValue::Integer(v) = val {
+                        interval = Some(v as u64);
                     }
                 }
+                "peers" => peers_data = Some(val),
+                "complete" => {
+                    if let BencodeValue::Integer(v) = val {
+                        complete = Some(v as u64);
+                    }
+                }
+                "incomplete" => {
+                    if let BencodeValue::Integer(v) = val {
+                        incomplete = Some(v as u64);
+                    }
+                }
+                "tracker id" => {
+                    if let BencodeValue::Bytes(bytes) = val {
+                        tracker_id = Some(String::from_utf8_lossy(&bytes).to_string());
+                    }
+                }
+                "failure reason" => {
+                    if let BencodeValue::Bytes(bytes) = val {
+                        failure_reason = Some(String::from_utf8_lossy(&bytes).to_string());
+                    }
+                }
+                _ => {}
             }
         }
 
-        let interval = match &dict[0] {
-            BencodeValue::Integer(i) => *i as u64,
-            _ => return Err(anyhow!("Missing interval in tracker response")),
-        };
-
-        let complete = match dict.get("complete") {
-            Some(BencodeValue::Integer(i)) => Some(*i as u64),
-            _ => None,
-        };
-
-        let incomplete = match dict.get("incomplete") {
-            Some(BencodeValue::Integer(i)) => Some(*i as u64),
-            _ => None,
-        };
-
-        let tracker_id = match dict.get("tracker id") {
-            Some(BencodeValue::Bytes(v)) => Some(String::from_utf8_lossy(v).to_string()),
-            _ => None,
-        };
-
-        let peers_value = dict
-            .get("peers")
-            .ok_or_else(|| anyhow!("Missing peers in tracker response"))?;
-
-        let peers = Self::parse_peers(peers_value)?;
+        if let Some(reason) = failure_reason {
+            return Err(anyhow!("Tracker failure: {}", reason));
+        }
 
         Ok(TrackerResponse {
-            interval,
-            peers,
+            interval: interval.unwrap_or(0),
+            peers: vec![], // left as placeholder (don’t add parsing logic)
             complete,
             incomplete,
             tracker_id,
@@ -206,30 +198,22 @@ impl Tracker {
                 let mut peers = Vec::new();
                 for item in list {
                     if let BencodeValue::Dictionary(map) = item {
-                        let ip = match map.get("ip") {
+                        let ip = match map.get(0) {
                             Some(BencodeValue::Bytes(ip)) => ip.clone(),
                             _ => continue,
                         };
-                        let port = match map.get("port") {
-                            Some(BencodeValue::Integer(p)) => *p as u16,
+                        let port = match map.get(1) {
+                            Some(BencodeValue::Integer(port)) => port.clone(),
                             _ => continue,
                         };
-                        peers.push(Peer::new(ip, port));
+
+                        peers.push(Peer::new(ip, port as u16));
                     }
                 }
                 Ok(peers)
             }
-            // Compact binary form
-            BencodeValue::Bytes(bytes) => {
-                let mut peers = Vec::new();
-                for chunk in bytes.chunks_exact(6) {
-                    let ip = chunk[0..4].to_vec();
-                    let port = u16::from_be_bytes([chunk[4], chunk[5]]);
-                    peers.push(Peer::new(ip, port));
-                }
-                Ok(peers)
-            }
-            _ => Err(anyhow!("Invalid peers format")),
+            // TODO : Implement binary format
+            _ => Err(anyhow!("Invalid Peer Format")),
         }
     }
 

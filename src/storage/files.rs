@@ -1,5 +1,5 @@
 use crate::protocol::torrent::*;
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use sha1::{Digest, Sha1};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -41,11 +41,9 @@ pub struct PieceWrite {
     pub data: Vec<u8>,
 }
 
-// type WriteToFileFn = fn(&FileStorage, path: &Path, offset: usize, data: &[u8]) -> Result<()>;
-
 impl FileStorage {
-    pub fn from(torrent: Torrent, download_dir: PathBuf) -> Result<Self> {
-        let file_map = Self::build_file_map(&torrent, &download_dir)?;
+    pub fn from(torrent: Torrent, download_dir: PathBuf) -> Self {
+        let file_map = Self::build_file_map(&torrent, &download_dir).unwrap_or_default();
         let total_length = torrent.length;
 
         let mut storage = FileStorage {
@@ -56,22 +54,28 @@ impl FileStorage {
         };
 
         // Create directory structure
-        storage.create_directories()?;
+        storage.create_directories().unwrap();
 
         // Check existing files
-        storage.check_existing_files()?;
+        storage.check_existing_files().unwrap();
 
-        Ok(storage)
+        storage
     }
 
-    fn build_file_map(torrent: &Torrent, download_dir: &Path) -> Result<Vec<FileMapping>> {
+    fn build_file_map(
+        torrent: &Torrent,
+        download_dir: &Path,
+    ) -> Result<Vec<FileMapping>, anyhow::Error> {
         let mut file_map = Vec::new();
         let mut current_offset = 0;
 
         match &torrent.files {
             Some(files) => {
                 // Multi-file Torrent
+                //
+                // Creates the base directory for files and folders in the .torrent file
                 let base_dir = download_dir.join(&torrent.name);
+                // I decided to iterate over evry file and the make a path fr them
                 for file in files {
                     let file_path = file
                         .path
@@ -104,24 +108,28 @@ impl FileStorage {
     }
 
     /// Creates directories for each and every file map in the file_map field
-    fn create_directories(&self) -> Result<()> {
+    fn create_directories(&self) -> Result<(), anyhow::Error> {
         for mapping in &self.file_map {
+            // creates the parent dir of a single file
             if let Some(parent) = mapping.path.parent() {
                 fs::create_dir_all(parent)?;
+            } else {
+                return Err(anyhow!("Theres an error"));
             }
         }
 
         Ok(())
     }
 
-    pub fn check_existing_files(&mut self) -> Result<()> {
+    /// Checks if files are complete
+    pub fn check_existing_files(&mut self) -> Result<(), anyhow::Error> {
         for mapping in &mut self.file_map {
             if mapping.path.exists() {
                 let metadata = fs::metadata(&mapping.path)?;
 
                 if metadata.len() as usize == mapping.length {
                     mapping.is_complete = true;
-                    println!("✅ Found complete file: {}", mapping.path.display());
+                    println!("✅ Found complete file : {}", mapping.path.display());
                 } else {
                     println!(
                         "⚠️  Found partial file: {} ({} bytes, expected {})",
@@ -139,49 +147,32 @@ impl FileStorage {
     ///
     /// It first verifies the hash of the piece at the specified index
     ///
-    /// It the gets the start and end of the piece
+    /// It then gets the start and end of the piece
+    ///
     /// Finds files which the piece spans
+    ///
     /// Writes into those files
-    pub fn write_piece(&mut self, piece_index: usize, data: &[u8]) -> Result<()> {
+    pub fn write_piece(&mut self, piece_index: usize, data: &[u8]) -> Result<(), anyhow::Error> {
         // Verify piece hash
         if !self.verify_piece_hash(piece_index, data)? {
             return Err(anyhow!("Piece {} hash verification failed", piece_index));
         }
 
-        // Gets the piece start of the passed index
-        // The start of a piece multiplied by the defined piece_length (eg 2 * 45kb = 90kb)
+        // start of the piece , usually the index * piece length
         let piece_start = piece_index * self.torrent.piece_length;
-        let piece_end = (piece_start + data.len()).min(self.total_length);
-
-        println!(
-            "📝 Writing piece {} ({} bytes) at offset {}",
-            piece_index,
-            data.len(),
-            piece_start
-        );
-
-        // Find which files this piece spans
+        let diff = (piece_start + data.len()).min(self.total_length);
+        let piece_end = diff;
         let affected_files = self.get_affected_files(piece_start, piece_end)?;
 
-        let mut data_offset = 0;
+        // Let's say the file starts at the beginning of the piece
+        let mut offset = 0;
         for (file_mapping, file_start, file_end) in affected_files {
-            // Where to start writing inside the file\
-            // Starts writing from the start of the file - the offset (eg 2045 - 0)
-            let write_start = file_start - file_mapping.start_offset;
-            // How many bytes to write from this piece
+            // postion to start writing
+            let write_start = file_start - piece_start;
             let write_length = file_end - file_start;
-            // Get the slice of data to write
-            let file_data = &data[data_offset..data_offset + write_length];
-
+            let file_data = &data[offset..offset + write_length];
             self.write_to_file(&file_mapping.path, write_start, file_data)?;
-            data_offset += write_length;
-
-            println!(
-                "  📄 Wrote {} bytes to {} at offset {}",
-                write_length,
-                file_mapping.path.display(),
-                write_start
-            );
+            offset += write_length;
         }
 
         Ok(())
@@ -191,7 +182,7 @@ impl FileStorage {
         &self,
         start: usize,
         end: usize,
-    ) -> Result<Vec<(&FileMapping, usize, usize)>> {
+    ) -> Result<Vec<(&FileMapping, usize, usize)>, anyhow::Error> {
         let mut affected = Vec::new();
 
         for mapping in &self.file_map {
@@ -209,11 +200,12 @@ impl FileStorage {
         Ok(affected)
     }
 
-    pub fn read_piece(&self, piece_index: usize) -> Result<Vec<u8>> {
+    pub fn read_piece(&self, piece_index: usize) -> Result<Vec<u8>, anyhow::Error> {
         // Gets the piece start of the passed index
         // The start of a piece multiplied by the defined piece_length (eg 2 * 45kb = 90kb)
         let piece_start = piece_index * self.torrent.piece_length;
 
+        // Usuallly the last piece of a file is smaller , so we check if a pieces index is equal to that of the last element and if so we get its actual size
         let piece_length = if piece_index == self.torrent.pieces.len() - 1 {
             // Last piece is usually shorter
             // eg (100kb - 90kb = 10kb)
@@ -223,7 +215,7 @@ impl FileStorage {
             self.torrent.piece_length
         };
 
-        // End of a piece (eg 16kb + 16kb = 32kb)
+        // End of a piece (eg 19kb + 16kb = 35kb)
         let piece_end = piece_start + piece_length;
         // Offset to read the file from / Simply the position in the file to read from
         let mut offset = 0;
@@ -249,7 +241,13 @@ impl FileStorage {
     #[doc = r"Simply reads a file
 
 Offset is simple which index of the file to start from"]
-    pub fn read_from_file(&self, path: &Path, offset: usize, length: usize) -> Result<Vec<u8>> {
+    pub fn read_from_file(
+        &self,
+        path: &Path,
+        offset: usize,
+        length: usize,
+    ) -> Result<Vec<u8>, anyhow::Error> {
+        // opens the file
         let mut file = File::open(path)?;
         file.seek(SeekFrom::Start(offset as u64))?;
 
@@ -260,7 +258,12 @@ Offset is simple which index of the file to start from"]
     }
 
     /// Writes to a file
-    pub fn write_to_file(&self, path: &Path, offset: usize, data: &[u8]) -> Result<()> {
+    pub fn write_to_file(
+        &self,
+        path: &Path,
+        offset: usize,
+        data: &[u8],
+    ) -> Result<(), anyhow::Error> {
         let mut file = OpenOptions::new().create(true).write(true).open(path)?;
 
         file.seek(SeekFrom::Start(offset as u64))?;
@@ -271,11 +274,17 @@ Offset is simple which index of the file to start from"]
     }
 
     /// Verifies a piece hash
-    pub fn verify_piece_hash(&self, piece_index: usize, data: &[u8]) -> Result<bool> {
+    pub fn verify_piece_hash(
+        &self,
+        piece_index: usize,
+        data: &[u8],
+    ) -> Result<bool, anyhow::Error> {
+        // Simply checks if the piece is actually part of the torrent
         if piece_index >= self.torrent.pieces.len() {
             return Err(anyhow!("Piece index {} out of range", piece_index));
         }
 
+        // Hashes it
         let mut hasher = Sha1::new();
         hasher.update(data);
         let hash = hasher.finalize();
@@ -284,14 +293,17 @@ Offset is simple which index of the file to start from"]
         Ok(hash.as_slice() == expected_hash)
     }
 
-    pub fn is_piece_complete(&self, piece_index: usize) -> Result<bool> {
+    /// Checks if a piece is complete
+    pub fn is_piece_complete(&self, piece_index: usize) -> Result<bool, anyhow::Error> {
+        // Reads the piece
         match self.read_piece(piece_index) {
+            // Verifies it
             Ok(data) => self.verify_piece_hash(piece_index, &data),
             Err(_) => Ok(false),
         }
     }
 
-    pub fn get_completion_status(&self) -> Result<(usize, usize)> {
+    pub fn get_completion_status(&self) -> Result<(usize, usize), anyhow::Error> {
         let mut complete_pieces = 0;
         let total_pieces = self.torrent.pieces.len();
 
@@ -304,8 +316,8 @@ Offset is simple which index of the file to start from"]
         Ok((complete_pieces, total_pieces))
     }
 
-    // Gets the missing pieces
-    pub fn get_missing_pieces(&self) -> Result<Vec<usize>> {
+    /// Gets the missing pieces
+    pub fn get_missing_pieces(&self) -> Result<Vec<usize>, anyhow::Error> {
         let mut missing = Vec::new();
 
         for i in 0..self.torrent.pieces.len() {

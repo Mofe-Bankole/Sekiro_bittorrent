@@ -144,19 +144,17 @@ impl Piece {
         // Validate block
         // Makes sure the blocks parent PIECE is the PIECE
         if block.info.piece_index != self.index {
-            return Err(anyhow!("Block is not a part of this piece"));
+            return Err(anyhow!("Block index is not equal to pieces index"));
         }
 
         if block.info.begin + block.data.len() > self.length {
-            return Err(anyhow!("Block exceeds piece length"));
+            return Err(anyhow!("Block exceeds Piece Size"));
         }
 
         self.requested_blocks.remove(&block.info);
         self.blocks.insert(block.info.begin, block);
 
-        if self.download_start.is_none() {
-            self.download_start = Some(Instant::now());
-        }
+        self.download_start = Some(Instant::now());
 
         if self.is_complete() {
             self.download_complete = Some(Instant::now());
@@ -174,8 +172,9 @@ impl Piece {
         let mut piece_data = vec![0u8; self.length];
 
         for (begin, block) in &self.blocks {
-            // begin in this case is most times 0
+            // begin in this case is most times zero ( 0 )
             // end is definetely the blocks size in this case
+            // blocks begin is added to the blocks size eg 1 + 47
             let end = begin + block.data.len();
 
             if end > self.length {

@@ -76,7 +76,8 @@ impl BlockManager {
 
         for (index, &hash) in torrent.pieces.iter().enumerate() {
             let length = if index == torrent.pieces.len() - 1 {
-                total_length - (index * piece_length)
+                let piece_size = index * piece_length;
+                total_length - piece_size
             } else {
                 piece_length
             };
@@ -111,7 +112,11 @@ impl BlockManager {
         self.download_queue.clear();
 
         // Check which pieces we already have
+        //
+        // Lock storage
         let storage = self.storage.lock().unwrap();
+
+        // Finds
         for (index, piece_arc) in self.pieces.iter().enumerate() {
             let mut piece = piece_arc.lock().unwrap();
 
@@ -127,7 +132,7 @@ impl BlockManager {
         Ok(())
     }
 
-    /// Simple sequential strategy
+    /// Simple sequential strategy to get the next piece
     pub fn get_next_piece_to_download(&mut self) -> Option<usize> {
         self.download_queue.pop_front()
     }
@@ -184,6 +189,7 @@ impl BlockManager {
         let piece_arc = self.pieces[piece_index].clone();
         let mut piece = piece_arc.lock().unwrap();
 
+        // checks if the piece is complete
         if piece.state != PieceState::Complete {
             return Err(anyhow!("Piece {} is not complete", piece_index));
         }
@@ -193,7 +199,7 @@ impl BlockManager {
 
         // Verify hash
         if !piece.verify_hash(&piece_data) {
-            eprintln!("Piece {} failed hash verification, resetting", piece_index);
+            println!("Piece {} failed hash verification, resetting", piece_index);
             piece.state = PieceState::Failed;
             self.stats.failed_pieces += 1;
 
